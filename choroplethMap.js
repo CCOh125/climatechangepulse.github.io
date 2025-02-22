@@ -2,6 +2,39 @@
 const WIDTH = 1400;
 const HEIGHT = 800;
 
+// Helper functions - define these at the top level
+function filterTweetsForDisaster(tweets, disaster) {
+  if (!tweets || !disaster) return [];
+  
+  const disasterStart = new Date(disaster.start_date);
+  
+  // Increase time window to 6 months before and after
+  const sixMonthsBefore = new Date(disasterStart);
+  sixMonthsBefore.setMonth(disasterStart.getMonth() - 6);
+  
+  const sixMonthsAfter = new Date(disasterStart);
+  sixMonthsAfter.setMonth(disasterStart.getMonth() + 6);
+
+  console.log("Time window:", {
+    start: sixMonthsBefore.toISOString(),
+    disaster: disasterStart.toISOString(),
+    end: sixMonthsAfter.toISOString()
+  });
+
+  // Filter and sort tweets by date (newest first)
+  const filteredTweets = tweets.filter(tweet => {
+    const tweetDate = new Date(tweet.created_at);
+    return tweetDate >= sixMonthsBefore && tweetDate <= sixMonthsAfter;
+  }).sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+
+  return filteredTweets;
+}
+
+function convertRadiansToMiles(radians) {
+  const earthRadiusInMiles = 3963;
+  return radians * earthRadiusInMiles;
+}
+
 let svg, g, g2, path, projection, colorScale, title, tooltip, disasterDetails, tipCountry, tipData, tipDisasterCountry, tipDisasterData;
 
 let hovered = false;
@@ -24,41 +57,135 @@ const monthNames = [
   "December",
 ];
 
-// Function to dynamically embed tweets
-function embedTweets(tweetIDs) {
-  //tweetIDS can be from 0 to 10
-  tweetIDs.forEach(function(id, index) {
-      twttr.widgets.createTweet(
-          id,
-          //use the tweetsElements array instead of document.getElementById
-          tweetsElements[index],
-          {
-              conversation : 'none',    // Options to not show replies
-              cards        : 'hidden',  // Hides cards (images, polls, etc.)
-              align        : 'center',  // Centers the tweet
-              theme        : 'light'    // Use 'dark' for dark mode
-          }
-      );
-  });
-  
+// Create tweet container at the top level, outside any function
+let tweetContainer = document.querySelector('.tweet-container');
+if (!tweetContainer) {
+  tweetContainer = document.createElement('div');
+  tweetContainer.className = 'tweet-container';
+  tweetContainer.style.position = 'fixed';
+  tweetContainer.style.background = 'white';
+  tweetContainer.style.padding = '20px';
+  tweetContainer.style.borderRadius = '8px';
+  tweetContainer.style.boxShadow = '0 2px 10px rgba(0,0,0,0.1)';
+  tweetContainer.style.maxHeight = '80vh';
+  tweetContainer.style.overflowY = 'auto';
+  tweetContainer.style.display = 'none';
+  tweetContainer.style.zIndex = '1000';
+  document.body.appendChild(tweetContainer);
 }
 
-// if tweetIDs.length == 1
-//loop through tweetIDs.length - 1 to 10
-// getDocumentById()
-//tweetsElements <- has document nodes
-// document nodes have innerHTML on them
-// innerHTML = "";
+// Add click handler at top level
+document.addEventListener('click', function(event) {
+  const tweetContainer = document.querySelector('.tweet-container');
+  if (tweetContainer && !event.target.closest('.tweet-container') && !event.target.closest('circle')) {
+    tweetContainer.style.display = 'none';
+  }
+});
 
-function removeTweets(tweetIDs) {
-  //if length = 0 the start index would be -1 so create a case for an empty array
-  // define a startIndex
-  for (let i = 0; i < 10; i++) {
-      tweetsElements[i].innerHTML = "";
+// Function to dynamically embed tweets
+function embedTweets(tweets) {
+  console.log("Attempting to embed tweets:", tweets);
+  
+  const tweetContainer = document.querySelector('.tweet-container');
+  if (!tweetContainer) {
+    console.error("Tweet container not found");
+    return;
+  }
+  
+  // Clear existing content
+  tweetContainer.innerHTML = '';
+  
+  // Create a header with info about the tweets
+  const header = document.createElement('div');
+  header.style.marginBottom = '15px';
+  header.style.padding = '10px';
+  header.style.borderBottom = '1px solid #eee';
+  header.innerHTML = `Found ${tweets.length} tweets from this time period`;
+  tweetContainer.appendChild(header);
+  
+  // Take only the first 10 tweets
+  const tweetsToShow = tweets.slice(0, 10);
+  
+  // Create a fallback display for tweets that can't be embedded
+  tweetsToShow.forEach((tweet, index) => {
+    const tweetDiv = document.createElement('div');
+    tweetDiv.id = `tweet-${index}`;
+    tweetDiv.style.marginBottom = '15px';
+    tweetDiv.style.padding = '10px';
+    tweetDiv.style.border = '1px solid #eee';
+    tweetDiv.style.borderRadius = '5px';
+    
+    // Create fallback content
+    const fallbackContent = document.createElement('div');
+    fallbackContent.innerHTML = `
+      <p style="margin: 0; color: #666;">Tweet ID: ${tweet.id_str || tweet.id}</p>
+      <p style="margin: 5px 0;">${tweet.text || 'Tweet text not available'}</p>
+      <p style="margin: 0; color: #666; font-size: 0.9em;">
+        Posted on: ${new Date(tweet.created_at).toLocaleDateString()}
+      </p>
+    `;
+    tweetDiv.appendChild(fallbackContent);
+    tweetContainer.appendChild(tweetDiv);
+    
+    // Still try to embed, but don't rely on it
+    twttr.widgets.createTweet(
+      tweet.id_str || tweet.id,
+      tweetDiv,
+      {
+        conversation: 'none',
+        cards: 'hidden',
+        align: 'center',
+        theme: 'light'
+      }
+    ).then(function (el) {
+      if (el) {
+        console.log(`Successfully embedded tweet ${tweet.id_str || tweet.id}`);
+        fallbackContent.style.display = 'none';
+      } else {
+        console.log(`Failed to embed tweet ${tweet.id_str || tweet.id}, using fallback`);
+      }
+    }).catch(error => {
+      console.log(`Error embedding tweet ${tweet.id_str || tweet.id}, using fallback`);
+    });
+  });
+  
+  // Add a note about historical data
+  if (tweets.some(tweet => new Date(tweet.created_at).getFullYear() < 2010)) {
+    const note = document.createElement('div');
+    note.style.marginTop = '15px';
+    note.style.padding = '10px';
+    note.style.backgroundColor = '#fff3cd';
+    note.style.border = '1px solid #ffeeba';
+    note.style.borderRadius = '5px';
+    note.innerHTML = 'Note: Some older tweets may not be available for embedding due to Twitter\'s data retention policies.';
+    tweetContainer.appendChild(note);
+  }
+}
+
+function removeTweets() {
+  const tweetContainer = document.getElementById('tweet-container');
+  if (tweetContainer) {
+    tweetContainer.innerHTML = '';
   }
 }
 
 function initChart(canvasElement) {
+  // Initialize tweetsElements array
+  tweetsElements = []; // Clear array first
+  for (let i = 1; i <= 10; i++) {
+    const element = document.getElementById(`tweet${i}`);
+    if (element) {
+      console.log(`Found tweet element ${i}`);
+      tweetsElements.push(element);
+    } else {
+      console.log(`Missing tweet element ${i}`);
+    }
+  }
+  
+  // Get disaster details container
+  disasterDetails = d3.select(".disasterDetails");
+  console.log("Disaster details container found:", disasterDetails.node() !== null);
+
   // Visualization canvas
   svg = d3
     .select(canvasElement)
@@ -133,16 +260,6 @@ function initChart(canvasElement) {
 
   // Tooltip placeholder
   tooltip = d3.select(".tooltip");
-  disasterDetails = d3.select(".disasterDetails");
-
-  //loop from 0 to 9
-    //d3.select("#tweet" + (index + 1));
-
-  for (let i = 0; i < 10; i++) {
-    //push to the tweetsElements array
-    tweetsElements.push(document.getElementById("tweet" + (i + 1)))
-  }
-  //get a reference to the disaster details div
 
   //handle the click event on the body tag
   //d3 has a select function d3.select(element)
@@ -213,229 +330,151 @@ function initChart(canvasElement) {
 //tHydrated = map object. map.get(id) == text
 function updateChart(topo, data, month, dyear, tyear, tHydrated) {
   const trans = d3.transition().duration(100);
-  const currentYear = data.values().next().value[0].Year;
+  
+  // Get current year from data
+  let currentYear;
+  for (let [key, value] of data) {
+    if (value && value[0] && value[0].Year) {
+      currentYear = parseInt(value[0].Year);
+      break;
+    }
+  }
+  
+  console.log("Current year:", currentYear);
+  console.log("Raw disaster data:", dyear);
+
+  // Update title with the year
   title.text(`${monthNames[month]}, ${currentYear}`);
 
   // Draw map
-  // Join
   const choroMap = g.selectAll("path").data(topo.features);
-
-  // Exit
   choroMap.exit().remove();
 
-
-
-  // Update
+  // Update map
   choroMap
     .enter()
     .append("path")
     .merge(choroMap)
     .attr("class", "Country")
     .transition(trans)
-    // draw each country
     .attr("d", path.projection(projection))
-    // set the color of each country
     .attr("fill", function(d) {
       d.total = data.get(d.properties["iso_a3"]);
       return d.total ? colorScale(d.total[month].Temperature) : 30;
     });
 
+  // Remove existing disaster points
+  g.selectAll("circle").remove();
 
+  // Load disaster data if not provided
+  if (!dyear && currentYear >= 2015 && currentYear <= 2020) {
+    console.log("Loading disaster data for year:", currentYear);
+    d3.csv("data/disasters.csv").then(function(disasters) {
+      dyear = disasters.filter(d => {
+        const disasterDate = new Date(d.start_date);
+        return disasterDate.getFullYear() === currentYear;
+      });
+      console.log(`Loaded ${dyear.length} disasters for ${currentYear}`);
+      
+      // Debug the first few disasters
+      console.log("Sample disasters:", dyear.slice(0, 3).map(d => ({
+        date: d.start_date,
+        lat: d.Latitude,
+        lng: d.Longitude,
+        type: d["Disaster Type"],
+        country: d.Country
+      })));
+      
+      renderDisasters(dyear);
+    });
+  } else {
+    renderDisasters(dyear);
+  }
 
-  /*if (dyear) {
-    choroMap
-    .enter()
-    .append('circle')
-    //.attr('cx', projection([-106.661513, 35.05917399])[0])
-    //.attr('cy', projection([-106.661513, 35.05917399])[1])
-    //.attr('cx', function(d) { return xScale(d.value); })
-    .attr('r','10px')
-    .attr('cx', projection([dyear.Latitude, dyear.Longitude])[0])
-    .attr('cy', projection([dyear.Latitude, dyear.Longitude])[1])
-    .style('fill', 'red');
-  }*/
-  g.selectAll("circle").remove().exit();
-  if (dyear) {
-    //clears disasters
-    const disasterMap = g.selectAll("circle").data(dyear);
-    disasterMap
+  function renderDisasters(disasters) {
+    if (!disasters) {
+      console.log("No disaster data to render");
+      return;
+    }
+
+    // Debug the data structure
+    console.log("First disaster data structure:", disasters[0]);
+
+    const validDisasters = disasters.filter(d => {
+      // Check for alternate column names for coordinates
+      const latitude = d.Latitude || d.latitude || d.LAT || d.lat;
+      const longitude = d.Longitude || d.longitude || d.LONG || d.long || d.lng;
+      
+      const hasDate = !!d.start_date;
+      const hasLong = !!longitude;
+      const hasLat = !!latitude;
+      const dateValid = !isNaN(new Date(d.start_date).getTime());
+      const yearMatch = new Date(d.start_date).getFullYear() === currentYear;
+      
+      if (!hasDate || !hasLong || !hasLat || !dateValid || !yearMatch) {
+        console.log("Invalid disaster:", {
+          disaster: d,
+          hasDate,
+          hasLong,
+          hasLat,
+          dateValid,
+          yearMatch,
+          foundLat: latitude,
+          foundLong: longitude,
+          allKeys: Object.keys(d)
+        });
+      }
+      
+      // Store the found coordinates back in the disaster object
+      if (hasLat && hasLong) {
+        d.Latitude = latitude;
+        d.Longitude = longitude;
+      }
+      
+      return hasDate && hasLong && hasLat && dateValid && yearMatch;
+    });
+
+    console.log(`Valid disasters for ${currentYear}:`, validDisasters.length);
+    
+    if (validDisasters.length > 0) {
+      console.log("Sample valid disaster:", validDisasters[0]);
+    }
+
+    const disasterMap = g.selectAll("circle")
+      .data(validDisasters)
       .enter()
-      .data(dyear)
-      .append('circle')
+      .append("circle")
       .attr("class", "Disaster")
       .attr('r', '10px')
       .attr("transform", function(d) {
-        return "translate(" + projection([
-          d.Longitude,
-          d.Latitude
-        ]) + ")"
+        return "translate(" + projection([parseFloat(d.Longitude), parseFloat(d.Latitude)]) + ")";
       })
       .style('fill', 'red')
-      .on("mouseover", function(event, d) {
-        //when mouse hovers circle
-        //d is a disaster row from disaster.csv
-        dhovered = true;
-        tipDisasterCountry = d.Country;
-        tipDisasterData = { // Creating a new object to avoid mutating the original object
-          Country: d.Country,
-          TotalDeaths: d['Total Deaths']
-        };
-        tooltip.html(tipDisasterData.Country + "<br/>" + "Total deaths:" + tipDisasterData.TotalDeaths);
-        tooltip
-          .style("left", event.pageX + 10 + "px")
-          .style("top", event.pageY - 28 + "px")
-          .transition()
-          .duration(100)
-          .style("opacity", 0.9)
-          .style("font-size", "10px");
-        d3.selectAll(".Disaster").transition().duration(50).style("opacity", 0.5);
-        d3.select(this)
-          .transition()
-          .duration(50)
-          .style("opacity", 1)
-          .style("stroke", "#0A0A0A")
-          .style("stroke-width", "0.5px");
-      })
-      .on("mouseout", function(d) {
-        //when mouse exits circle
-        dhovered = false;
-        // fading out all disaster circles
-        d3.selectAll(".Disaster").transition().duration(50).style("opacity", 1);
-        // setting the stroke around the clicked on circle to none
-        // this = clicked on circle
-        d3.select(this).transition().duration(50).style("stroke", "none");
-        // Tooltip
-        tooltip.transition().duration(100).style("opacity", 0);
-      })
+      .style('cursor', 'pointer')
       .on("click", function(event, d) {
-        //event has details of the mouse click
-        //what html element we clicked on
-        //x, y coordinates of where we clicked
-        //d is a disaster row from disaster.csv
+        event.stopPropagation();
+        
+        const tweetContainer = document.querySelector('.tweet-container');
+        if (!tweetContainer) return;
+        
+        // Position the container near the click
+        tweetContainer.style.left = (event.pageX + 20) + 'px';
+        tweetContainer.style.top = (event.pageY) + 'px';
+        tweetContainer.style.display = 'block';
+        tweetContainer.innerHTML = '<div class="loading">Loading tweets...</div>';
 
-        //fade out the tooltip
-        tooltip.transition().duration(100).style("opacity", 0);
-
-        /* copy of below code
-        var disasterCoords = [d.Longitude, d.Latitude];
-          var tweetCoords = [twitterData.lng, twitterData.lat];
-          var distance = d3.geoDistance(disasterCoords, tweetCoords);
-          return distance < 0.5*/
-
-        /*function compareFn(a, b) {
-          if (a is less than b by some ordering criterion) {
-            return -1;
-          } else if (a is greater than b by the ordering criterion) {
-            return 1;
-          }
-          // a must be equal to b
-          return 0;
-        }*/
-
-        //filter out all the tweets that are not close to the disaster
         if (tyear) {
-          //create an array of tweets that are created within the disaster date and end date
-          let tweetsDuringDisaster = tyear.filter(twitterData => {
-            //calculate distance between tweet and disaster
-            //if distance is less than 1 return true
-            var created_at = new Date(twitterData.created_at);
-            return (created_at >= new Date(d.start_date) && created_at <= new Date(d.end_date));
-          });
+          const relevantTweets = filterTweetsForDisaster(tyear, d);
+          console.log("Found relevant tweets:", relevantTweets.length);
           
-          //maybe create a max count and filter out by some specification
-          //sort by distance
-
-          //var disasterCoords = [d.Longitude, d.Latitude];
-          //var tweetCoords = [twitterData.lng, twitterData.lat];
-
-          //var distance = d3.geoDistance(disasterCoords, tweetCoords);
-          //var distanceKm = distanceRadians * R;
-          //return distance < 0.5
-
-          function convertRadiansToMiles(radians) {
-              const earthRadiusInMiles = 3963; // Earth's radius in miles
-              return radians * earthRadiusInMiles;
+          if (relevantTweets.length > 0) {
+            embedTweets(relevantTweets);
+          } else {
+            tweetContainer.innerHTML = 'No tweets found for this disaster';
           }
-
-          // loop through tweets and calculate the distance to the epicenter
-          // set a variable on the tweet that is the distance to the epicenter
-          var disasterEpicenter = [d.Longitude, d.Latitude];
-
-          for (var i = 0; i < tweetsDuringDisaster.length; i++) {
-            var tweetCoords = [tweetsDuringDisaster[i].lng, tweetsDuringDisaster[i].lat];
-            tweetsDuringDisaster[i].distanceToDisaster = d3.geoDistance(tweetCoords, disasterEpicenter);
-            tweetsDuringDisaster[i].distanceToDisasterInMiles = convertRadiansToMiles(tweetsDuringDisaster[i].distanceToDisaster);
-          }
-
-          tweetsDuringDisaster = tweetsDuringDisaster.filter(twitterData => {
-            //filter out any tweets that have a distance in miles to the disaster greater than 500 miles
-            // return true if the distance is less than or equal to miles
-            
-            return twitterData.distanceToDisasterInMiles <= 1000;
-          });
-
-          //compare a's distance to the epicenter of the disaster to the b's distance to the epicenter of the disaster
-
-          function compareFn(tweetA, tweetB) {
-            if (tweetA.distanceToDisaster < tweetB.distanceToDisaster) {
-              return -1;
-            } else if (tweetB.distanceToDisaster < tweetA.distanceToDisaster) {
-              return 1;
-            }
-            // a must be equal to b
-            return 0;
-          }
-
-          //tweets sorted by distance
-          let sortedTweets = tweetsDuringDisaster.sort(compareFn);
-          if (sortedTweets.length > 10)
-            sortedTweets = sortedTweets.slice(0, 10)
-
-          //code making sure only a certain # of disasters are shown
-          
-
-          
-          //adding html to the disasters details popup
-          let tweetIDS = [];
-          for (var i = 0; i < sortedTweets.length; i++) {
-            tweetIDS.push(sortedTweets[i].id);
-          }
-          //give embedTweets a list of tweetIDS
-
-          removeTweets(tweetIDS);
-          embedTweets(tweetIDS);
-          
-          //disasterDetails.html("Tweets that are during the disaster: " + tweets);
-          console.log(sortedTweets)
-        } else {
-          // loop through the tweetsElements
-            // set innerHTML = ""
-          removeTweets();
-          //disasterDetails.html("No avaliable data");
-          //console.log(data[4]);
         }
-        disasterDetails.style("display", "block");
-        //fade in a popup that has details of the disaster
-        disasterDetails
-          .style("left", event.pageX + 10 + "px")
-          .style("top", event.pageY - 28 + "px")
-          .transition()
-          .duration(100)
-          .style("opacity", 1)
-          .style("font-size", "10px");
-      })
-      ;
-    
-
-    // Update tooltip data
-    if (dhovered) {
-      //tipDisasterData = tipCountry ? data.get(tipCountry)[month] : {Country: "No available data", Temperature: ""};
-      tooltip.html(tipDisasterData.Country + "<br/>" + "Total Deaths:" + tipDisasterData.TotalDeaths);
-    }
-  } else {
-    g.selectAll("circle").remove();
+      });
   }
-
 
   // Interactivity
   choroMap
@@ -479,3 +518,26 @@ function updateChart(topo, data, month, dyear, tyear, tHydrated) {
 }
 
 export { initChart, updateChart };
+
+// Add CSS to your stylesheet or in a style tag
+const style = document.createElement('style');
+style.textContent = `
+  .tweet-container {
+    min-width: 300px;
+    max-width: 550px;
+    background: white;
+    padding: 20px;
+    border-radius: 8px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+  
+  .loading {
+    color: #666;
+    font-style: italic;
+    text-align: center;
+    padding: 20px;
+  }
+`;
+document.head.appendChild(style);
