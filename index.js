@@ -48,17 +48,27 @@ const dataPromises = [
 
 //Disaster Type,Disaster Subtype,Disaster Group,Disaster Subgroup,Event Name,Origin,Country,Location,Latitude,Longitude,start_date,end_date,Total Deaths,No Affected,Reconstruction Costs ('000 US$),Total Damages ('000 US$),CPI
 function isValid(disasterRow) {
-  //check if disaster is valid
-  //if all are valid return true
-  if (disasterRow.Latitude >= 90 || disasterRow.Latitude <= -90 || disasterRow.Longitude >= 180 || disasterRow.Longitude <= -180)
+  // Basic required fields check
+  if (!disasterRow || !disasterRow.start_date || !disasterRow.Latitude || !disasterRow.Longitude) {
     return false;
-    
-  // return false if null or undefined
-  if (!disasterRow["Total Deaths"])
+  }
+
+  // Parse and validate coordinates
+  const lat = parseFloat(disasterRow.Latitude);
+  const lng = parseFloat(disasterRow.Longitude);
+  if (isNaN(lat) || isNaN(lng) || lat > 90 || lat < -90 || lng > 180 || lng < -180) {
     return false;
+  }
+
+  // Validate date
+  const startDate = new Date(disasterRow.start_date);
+  if (isNaN(startDate.getTime())) {
+    return false;
+  }
 
   return true;
 }
+
 //created_at,id,lng,lat,topic,sentiment,stance,gender,temperature_avg,aggressiveness
 function isTValid(twitterRow) {
   if (twitterRow.lat >= 90 || twitterRow.lat <= -90 || twitterRow.lng >= 180 || twitterRow.lng <= -180)
@@ -74,6 +84,27 @@ function isTValid(twitterRow) {
           //if (!twitterRow["lat"])  {   }
 
   return true;
+}
+
+function filterTweetsForDisaster(tweets, disaster) {
+  if (!tweets || !disaster) return [];
+  
+  const disasterStart = new Date(disaster.start_date);
+  const oneMonthBefore = new Date(disasterStart);
+  oneMonthBefore.setMonth(disasterStart.getMonth() - 1);
+  
+  const oneMonthAfter = new Date(disasterStart);
+  oneMonthAfter.setMonth(disasterStart.getMonth() + 1);
+
+  return tweets.filter(tweet => {
+    const tweetDate = new Date(tweet.created_at);
+    return tweetDate >= oneMonthBefore && tweetDate <= oneMonthAfter;
+  });
+}
+
+function convertRadiansToMiles(radians) {
+  const earthRadiusInMiles = 3963;
+  return radians * earthRadiusInMiles;
 }
 
 // Load datasets and start visualization
@@ -100,25 +131,19 @@ Promise.all(dataPromises).then(function (data) {
   // or find lat and long somehow
   var validData = [];
   for (var i = 0; i < data[2].length; i++) {
-    //if valid
     if (isValid(data[2][i]) == true) {
       data[2][i].Year = new Date(data[2][i].start_date).getFullYear();
-      data[2][i].Month = monthNames[new Date(data[2][i].start_date).getMonth() - 1];
+      data[2][i].Month = monthNames[new Date(data[2][i].start_date).getMonth()];
       if (data[2][i].Latitude && data[2][i].Longitude) {
         validData.push(data[2][i]);
       }
-    } else {
-      console.log("row invalid")
-      console.log(data[2][i]);
     }
   }
   data[2] = validData;
   
   const disastersData = d3.group(
     data[2],
-    (d) => d.Year,
-    
-    //(d) => d.Country // Maybe change to IS03
+    (d) => d.Year
   );
 
   //filter twitter data
@@ -197,11 +222,7 @@ Promise.all(dataPromises).then(function (data) {
 
     const dYearData = disastersData.get(year);
     const tYearData = twitterData.get(year);
-    //const dcountryData = dyearData.get(country);
     
-    /*polarArea.updateChart(countryData);
-    areaChart.updateChart(countryData);
-    anomalyRadial.updateChart(anomalyData, year);*/
     choroplethMap.updateChart(topoData, yearData, month, dYearData, tYearData, tweetsMap);
   }
   
