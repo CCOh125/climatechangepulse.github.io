@@ -175,7 +175,7 @@
     <!-- Add chatbot container -->
     <div class="chat-container">
       <div class="chat-header" onclick="toggleChat()">
-        Ask Gemini about Climate Change
+        Ask OpenAI about Climate Change
       </div>
       <div class="chat-body" id="chat-body">
         <div id="chat-messages"></div>
@@ -226,7 +226,7 @@
       // Add loading message
       const loadingDiv = document.createElement('div');
       loadingDiv.className = 'response loading';
-      loadingDiv.textContent = 'Gemini is thinking...';
+      loadingDiv.textContent = 'OpenAI is thinking...';
       chatMessages.appendChild(loadingDiv);
 
       // Clear input
@@ -249,7 +249,7 @@
         // Add bot response
         const botDiv = document.createElement('div');
         botDiv.className = 'response bot-message';
-        botDiv.textContent = `Gemini: ${data.response}`;
+        botDiv.textContent = `OpenAI: ${data.response}`;
         chatMessages.appendChild(botDiv);
 
         // Scroll to bottom
