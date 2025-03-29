@@ -3,7 +3,7 @@ from flask import Flask, request, jsonify
 from dotenv import load_dotenv
 from flask_cors import CORS
 from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import OpenAIEmbeddings
+from langchain_openai import OpenAIEmbeddings
 from langchain_openai import ChatOpenAI
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
@@ -56,7 +56,7 @@ def initialize_rag():
     
     print("Loading vectorstore from disk...")
     embeddings = OpenAIEmbeddings()
-    vectorstore = FAISS.load_local('vectorstore', embeddings)
+    vectorstore = FAISS.load_local('vectorstore', embeddings, allow_dangerous_deserialization=True)
     
     print("Setting up RAG chain...")
     qa_chain = setup_rag(vectorstore)
