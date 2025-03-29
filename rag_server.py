@@ -13,7 +13,7 @@ load_dotenv()
 
 # Initialize Flask
 app = Flask(__name__)
-CORS(app, resources={r"/*": {"origins": "http://localhost:8000"}})
+CORS(app, resources={r"/*": {"origins": "http://localhost:7100"}})
 
 # Global variables for RAG components
 vectorstore = None

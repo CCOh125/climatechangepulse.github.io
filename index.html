@@ -1,264 +1,217 @@
 <!DOCTYPE html>
-<html>
-  <head>
-    <title>Global warming visualization</title>
-    <!-- Styles -->
-    <link href="styles/styles.css" rel="stylesheet" />
-    <link
-      href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.1/dist/css/bootstrap.min.css"
-      rel="stylesheet"
-      integrity="sha384-+0n0xVW2eSR5OomGNYDnhzAbDsOXxcvSN1TPprVMTNDbiYZCxYbOOl7+AMvyTG2x"
-      crossorigin="anonymous"
-    />
-    <style>
-      /* Add chatbot styles */
-      .chat-container {
-        position: fixed;
-        bottom: 20px;
-        right: 20px;
-        width: 300px;
-        background: white;
-        border-radius: 10px;
-        box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        z-index: 1000;
-      }
-      
-      .chat-header {
-        padding: 10px;
-        background: #007bff;
-        color: white;
-        border-radius: 10px 10px 0 0;
-        cursor: pointer;
-      }
-      
-      .chat-body {
-        max-height: 400px;
-        overflow-y: auto;
-        padding: 10px;
-        display: none;
-      }
-      
-      .chat-input-container {
-        display: flex;
-        padding: 10px;
-        border-top: 1px solid #eee;
-      }
-      
-      #chat-input {
-        flex-grow: 1;
-        padding: 5px;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        margin-right: 5px;
-      }
-      
-      .response {
-        margin: 5px 0;
-        padding: 8px;
-        border-radius: 4px;
-      }
-      
-      .user-message {
-        background-color: #e3f2fd;
-      }
-      
-      .bot-message {
-        background-color: #f8f9fa;
-      }
-      
-      .loading {
-        color: #666;
-        font-style: italic;
-      }
-    </style>
-  </head>
-  <body>
-    <nav
-      class="navbar navbar-dark bg-dark fixed-top navbar-expand-lg navbar-light bg-light"
-    >
-      <div class="container-fluid">
-        <a class="navbar-brand" href=".">World temperature visualizer</a>
-        <button
-          class="navbar-toggler"
-          type="button"
-          data-bs-toggle="collapse"
-          data-bs-target="#navbarSupportedContent"
-          aria-controls="navbarSupportedContent"
-          aria-expanded="false"
-          aria-label="Toggle navigation"
-        >
-          <span class="navbar-toggler-icon"></span>
-        </button>
-        <div class="collapse navbar-collapse" id="navbarSupportedContent">
-          <ul class="navbar-nav ms-auto mb-2 mb-lg-0">
-            <li class="nav-item dropdown">
-              <a
-                class="nav-link dropdown-toggle"
-                href="#"
-                id="countryDropdown"
-                role="button"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
-              >
-                Country
-              </a>
-              <ul
-                id="country-list"
-                class="dropdown-menu dropdown-menu-end scrollable-menu"
-                aria-labelledby="navbarDropdown"
-              ></ul>
-            </li>
-            <li class="nav-item dropdown">
-              <a
-                class="nav-link dropdown-toggle"
-                href="#"
-                id="yearDropdown"
-                role="button"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
-              >
-                Year
-              </a>
-              <ul
-                id="year-list"
-                class="dropdown-menu dropdown-menu-end scrollable-menu"
-                aria-labelledby="navbarDropdown"
-              ></ul>
-            </li>
-            <li class="nav-item dropdown">
-              <a
-                class="nav-link dropdown-toggle"
-                href="#"
-                id="MonthDropdown"
-                role="button"
-                data-bs-toggle="dropdown"
-                aria-expanded="false"
-              >
-                Month
-              </a>
-              <ul
-                id="month-list"
-                class="dropdown-menu dropdown-menu-end"
-                aria-labelledby="navbarDropdown"
-              ></ul>
-            </li>
-          </ul>
-        </div>
-      </div>
-    </nav>
-    <div id="outerContainer">
-      <div class="centered-flex">
-        <div id="choroplethMap"></div>
-        <input type="range" value="0" class="slider" id="yearSlider" />
-        <button id="play-button" class="btn btn-outline-dark shadow-none">Pause</button>
-      </div>
-      <div id="chartContainer">
-        <div id="polarArea"></div>
-        <div id="areaChart"></div>
-        <div id="anomalyRadial"></div>
-      </div>
-    </div>
-    <div class="tooltip" style="opacity: 0"></div>
-    <div class="disasterDetails" style="opacity:0">
-      <div id="tweet1" class="tweet"></div>
-      <div id="tweet2" class="tweet"></div>
-      <div id="tweet3" class="tweet"></div>
-      <div id="tweet4" class="tweet"></div>
-      <div id="tweet5" class="tweet"></div>
-      <div id="tweet6" class="tweet"></div>
-      <div id="tweet7" class="tweet"></div>
-      <div id="tweet8" class="tweet"></div>
-      <div id="tweet9" class="tweet"></div>
-      <div id="tweet10" class="tweet"></div>
-    </div>
-
-    <!-- Add chatbot container -->
-    <div class="chat-container">
-      <div class="chat-header" onclick="toggleChat()">
-        Ask OpenAI about Climate Change
-      </div>
-      <div class="chat-body" id="chat-body">
-        <div id="chat-messages"></div>
-        <div class="chat-input-container">
-          <input type="text" id="chat-input" placeholder="Ask a question..." />
-          <button onclick="sendMessage()" class="btn btn-primary btn-sm">Send</button>
-        </div>
-      </div>
-    </div>
-  </body>
-  <script src="https://d3js.org/d3.v6.min.js"></script>
-  <script src="https://d3js.org/d3-geo-projection.v3.min.js"></script>
-  <script
-    src="https://cdn.jsdelivr.net/npm/bootstrap@5.0.1/dist/js/bootstrap.bundle.min.js"
-    integrity="sha384-gtEjrD/SeCtmISkJkNUaaKMoLD0//ElJ19smozuHV6z3Iehds+3Ulb9Bn9Plx0x4"
-    crossorigin="anonymous"
-  ></script>
-  <script type="module" src="./index.js">
-  </script>
-  <script src="https://platform.twitter.com/widgets.js"></script>
-
-  <!-- Add chatbot script -->
-  <script>
-    function toggleChat() {
-      const chatBody = document.getElementById('chat-body');
-      chatBody.style.display = chatBody.style.display === 'none' ? 'block' : 'none';
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Climate Change Pulse - An interactive tool visualizing the relationship between natural disasters and social media reactions to climate change events.">
+  <title>Climate Change Pulse - Home</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.1/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="styles/home.css" rel="stylesheet">
+  <style>
+    /* Basic styles for the home page */
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      margin: 0;
+      padding: 0;
+      background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+      min-height: 100vh;
     }
 
-    const chatInput = document.getElementById('chat-input');
-    const chatMessages = document.getElementById('chat-messages');
+    .hero-section {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 6rem 1rem;
+    }
 
-    chatInput.addEventListener('keypress', function(e) {
-      if (e.key === 'Enter') {
-        sendMessage();
+    .hero-section h1 {
+      font-size: 4rem;
+      font-weight: 700;
+      margin-bottom: 2rem;
+      color: #1e3a8a;
+    }
+
+    .hero-section .buttons {
+      display: flex;
+      gap: 20px;
+      margin-top: 2rem;
+    }
+
+    .summary-section {
+      background-color: white;
+      padding: 4rem 2rem;
+      border-radius: 10px;
+      box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+      max-width: 1000px;
+      margin: 0 auto 4rem auto;
+    }
+
+    .cta-button {
+      background-color: #2563eb;
+      color: white;
+      padding: 15px 30px;
+      font-size: 1.2rem;
+      border: none;
+      border-radius: 30px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      font-weight: 600;
+    }
+
+    .cta-button.secondary {
+      background-color: #10b981;
+    }
+
+    .cta-button:hover {
+      background-color: #1d4ed8;
+      transform: translateY(-3px);
+      box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+    }
+
+    .cta-button.secondary:hover {
+      background-color: #059669;
+    }
+
+    .video-modal {
+      display: none;
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-color: rgba(0, 0, 0, 0.8);
+      z-index: 1000;
+      justify-content: center;
+      align-items: center;
+    }
+
+    .video-container {
+      position: relative;
+      width: 80%;
+      max-width: 800px;
+      padding-top: 56.25%; /* 16:9 Aspect Ratio */
+    }
+
+    .video-container iframe {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+    }
+
+    .close-btn {
+      position: absolute;
+      top: 20px;
+      right: 30px;
+      color: white;
+      font-size: 40px;
+      cursor: pointer;
+    }
+
+    .footer {
+      padding: 2rem;
+      text-align: center;
+      background-color: #1e3a8a;
+      color: white;
+    }
+
+    /* Climate-themed icons */
+    .climate-icon {
+      font-size: 3rem;
+      margin: 1rem;
+      color: #1e3a8a;
+    }
+  </style>
+</head>
+<body>
+  <!-- Hero Section -->
+  <div class="hero-section">
+    <h1>Climate Change Pulse</h1>
+    <p class="lead">Visualizing the intersection of natural disasters and social media</p>
+    <div class="buttons">
+      <button class="cta-button video-trigger">Watch Introduction Video</button>
+      <a href="visualization.html" class="cta-button secondary">Explore Visualization</a>
+    </div>
+  </div>
+
+  <!-- Summary Section -->
+  <div class="summary-section">
+    <h2 class="mb-4">Executive Summary</h2>
+    <div class="row">
+      <div class="col-md-8">
+        <p>Climate Change Pulse is an interactive web tool that visualizes natural disasters on a world map, overlaid with social media reactions. This project aims to explore the connection between environmental catastrophes and public sentiment.</p>
+        
+        <h3 class="mt-4">How It Works</h3>
+        <p>Our visualization tool allows you to:</p>
+        <ul>
+          <li>Scroll through years to see historical disaster patterns</li>
+          <li>Click on disaster markers (red dots) to view tweets within a 1000-mile radius</li>
+          <li>Analyze temperature changes across different regions</li>
+          <li>Explore correlations between disaster events and public sentiment</li>
+        </ul>
+        
+        <h3 class="mt-4">Research Background</h3>
+        <p>Our research utilizes datasets from the "Climate Change Twitter Dataset" research initiative by Dimitrios Effrosynidis et al. (2022). This collection includes over fifteen million data points spanning thirteen years related to climate change discussions on social media.</p>
+        
+        <p>We employ Retrieval-Augmented Generation (RAG) technology to provide intelligent answers to your climate-related questions, drawing upon our comprehensive dataset.</p>
+      </div>
+      <div class="col-md-4">
+        <div class="d-flex flex-column align-items-center">
+          <div class="climate-icon">🌍</div>
+          <div class="climate-icon">🌪️</div>
+          <div class="climate-icon">📊</div>
+          <div class="climate-icon">📱</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Video Modal -->
+  <div class="video-modal">
+    <span class="close-btn">&times;</span>
+    <div class="video-container">
+      <!-- Replace VIDEO_ID with your actual YouTube video ID -->
+      <iframe src="" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <div class="footer">
+    <p>© 2025 Climate Change Pulse | Data sourced from Climate Change Twitter Dataset (Effrosynidis et al., 2022)</p>
+  </div>
+
+  <script>
+    // Video modal functionality
+    const videoModal = document.querySelector('.video-modal');
+    const videoTrigger = document.querySelector('.video-trigger');
+    const closeBtn = document.querySelector('.close-btn');
+    const videoIframe = document.querySelector('.video-container iframe');
+    
+    // Replace with your actual YouTube video ID
+    const videoId = "dQw4w9WgXcQ"; // Sample ID - replace with your actual video ID
+    
+    // Show video when the button is clicked - removed auto-popup
+    videoTrigger.addEventListener('click', () => {
+      videoModal.style.display = 'flex';
+      videoIframe.src = `https://www.youtube.com/embed/${videoId}?autoplay=1`;
+    });
+    
+    // Close video modal
+    closeBtn.addEventListener('click', () => {
+      videoModal.style.display = 'none';
+      videoIframe.src = '';
+    });
+    
+    // Close modal when clicking outside the video
+    videoModal.addEventListener('click', (e) => {
+      if (e.target === videoModal) {
+        videoModal.style.display = 'none';
+        videoIframe.src = '';
       }
     });
-
-    async function sendMessage() {
-      const message = chatInput.value.trim();
-      if (!message) return;
-
-      // Add user message
-      const userDiv = document.createElement('div');
-      userDiv.className = 'response user-message';
-      userDiv.textContent = `You: ${message}`;
-      chatMessages.appendChild(userDiv);
-
-      // Add loading message
-      const loadingDiv = document.createElement('div');
-      loadingDiv.className = 'response loading';
-      loadingDiv.textContent = 'OpenAI is thinking...';
-      chatMessages.appendChild(loadingDiv);
-
-      // Clear input
-      chatInput.value = '';
-
-      try {
-        const response = await fetch('http://localhost:5000/chat', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ message: message })
-        });
-
-        const data = await response.json();
-
-        // Remove loading message
-        loadingDiv.remove();
-
-        // Add bot response
-        const botDiv = document.createElement('div');
-        botDiv.className = 'response bot-message';
-        botDiv.textContent = `OpenAI: ${data.response}`;
-        chatMessages.appendChild(botDiv);
-
-        // Scroll to bottom
-        chatMessages.scrollTop = chatMessages.scrollHeight;
-
-      } catch (error) {
-        loadingDiv.textContent = 'Error: Failed to get response';
-        loadingDiv.style.color = 'red';
-      }
-    }
   </script>
-</html>
+</body>
+</html> 

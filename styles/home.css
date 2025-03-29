@@ -1,0 +1,106 @@
+/* Home page specific styles */
+
+/* Animation for the hero title */
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.hero-section h1 {
+  animation: fadeInUp 1s ease-out;
+}
+
+.hero-section p {
+  animation: fadeInUp 1s ease-out 0.3s forwards;
+  opacity: 0;
+  animation-fill-mode: forwards;
+}
+
+.hero-section .buttons {
+  animation: fadeInUp 1s ease-out 0.6s forwards;
+  opacity: 0;
+  animation-fill-mode: forwards;
+}
+
+/* Enhanced button styles */
+.cta-button {
+  text-decoration: none;
+  display: inline-block;
+  color: white !important;
+}
+
+.cta-button:hover {
+  color: white !important;
+}
+
+/* Styles for the secondary button */
+.cta-button.secondary {
+  background-color: #10b981;
+}
+
+.cta-button.secondary:hover {
+  background-color: #059669;
+  color: white !important;
+}
+
+/* Summary section enhancements */
+.summary-section {
+  line-height: 1.6;
+}
+
+.summary-section h2 {
+  color: #1e3a8a;
+  font-weight: 600;
+}
+
+.summary-section h3 {
+  color: #2563eb;
+  font-weight: 500;
+}
+
+.summary-section ul {
+  padding-left: 1.2rem;
+}
+
+.summary-section li {
+  margin-bottom: 0.5rem;
+}
+
+/* Video modal enhancements */
+.video-modal {
+  backdrop-filter: blur(4px);
+}
+
+.close-btn {
+  transition: transform 0.3s ease;
+}
+
+.close-btn:hover {
+  transform: scale(1.2);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+  .hero-section h1 {
+    font-size: 3rem;
+  }
+  
+  .hero-section .buttons {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .climate-icon {
+    font-size: 2rem;
+  }
+  
+  .summary-section {
+    padding: 2rem 1rem;
+  }
+} 

@@ -1,3 +1,10 @@
+"""
+chatbot_example.py
+
+This script is a basic example of how to use the OpenAI API to create a chatbot.
+"""
+
+
 import os
 from openai import OpenAI
 from dotenv import load_dotenv

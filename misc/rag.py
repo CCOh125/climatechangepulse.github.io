@@ -94,8 +94,8 @@ def create_knowledge_base(documents):
 def setup_rag(vectorstore):
     # Define a custom prompt template
     template = """You are an assistant that helps analyze disaster and climate-related social media data.
-    Use the following pieces of context to answer the question at the end.
-    If you don't know the answer, just say you don't know.
+    Use only the providedcontext to answer the question.
+    Do not provide an answer if no relevant information is found.
 
     Context:
     {context}

@@ -1,3 +1,10 @@
+"""
+aifeature.py
+
+This script uses Gemini to count the number of disasters by type in the disaster data from 2007-2009.
+This is an older script that is not used in the project.
+"""
+
 import os
 import google.generativeai as genai
 from dotenv import load_dotenv
