@@ -18,7 +18,7 @@ if not OPENROUTER_API_KEY:
 # Initialize Flask
 app = Flask(__name__, static_url_path='', static_folder='.')
 app.secret_key = os.urandom(24)  # For session management
-CORS(app, resources={r"/*": {"origins": ["http://localhost:7100", "https://climatechangepulse.github.io"]}})
+CORS(app, resources={r"/*": {"origins": ["http://localhost:7100", "https://climatechangepulse.org"]}})
 
 # Global variables
 sessions = {}  # Store conversation history
