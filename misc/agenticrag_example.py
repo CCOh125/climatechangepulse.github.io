@@ -5,7 +5,7 @@ import os
 
 load_dotenv()
 API_KEY = os.getenv("OPENAI_API_KEY")
-df = pd.read_csv('/misc/data/icecream.csv')
+df = pd.read_csv('../data/icecream.csv')
 
 def get_pandas_expression(query):
     client = OpenAI(api_key=API_KEY)

@@ -43,3 +43,4 @@ Thumbs.db
 .env
 venv/
 vectorstore/
+misc/agenticrag_example.py
