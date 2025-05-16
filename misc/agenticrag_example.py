@@ -63,13 +63,9 @@ def determine_dataset(query):
         {
             'role': 'system',
             'content': (
-                'You are an AI that determines which dataset to use based on a query. '
-                'Return a JSON object with key "dataset" and value either "disasters" or "tweets". '
-                'Use "disasters" for queries about natural disasters, deaths, economic damage, etc. '
-                'Use "tweets" for queries about social media, sentiment, aggressiveness, etc. '
-                'Here are the columns in each dataset:\n'
-                f'Disasters: {", ".join(disasters_df.columns)}\n'
-                f'Tweets: {", ".join(tweets_df.columns)}'
+                'Return only "disasters" or "tweets" based on the query. '
+                'Use "disasters" for queries about natural disasters, deaths, economic damage. '
+                'Use "tweets" for queries about social media, sentiment, aggressiveness.'
             )
         },
         {
@@ -80,48 +76,45 @@ def determine_dataset(query):
     
     response = make_openrouter_request(messages)
     
-    # Extract JSON from markdown code block if present
-    json_match = re.search(r'```(?:json)?\s*(\{.*?\})\s*```', response, re.DOTALL)
-    if json_match:
-        response = json_match.group(1)
-    else:
-        # If no markdown block, try to find JSON in the response
-        json_match = re.search(r'(\{.*\})', response, re.DOTALL)
-        if json_match:
-            response = json_match.group(1)
-    
-    try:
-        dataset = json.loads(response)["dataset"]
-        return dataset
-    except (json.JSONDecodeError, KeyError) as e:
-        print(f"Error determining dataset: {e}")
-        print(f"Raw response: {response}")
-        return None
+    # Clean up response to get just the dataset name
+    response = response.strip().lower()
+    if response in ['disasters', 'tweets']:
+        return response
+    return None
 
 def get_pandas_expression(query, dataset_name, retry_count=0, max_retries=3, previous_error=None):
     # Select the appropriate dataframe
     df = disasters_df if dataset_name == "disasters" else tweets_df
     
+    # Get column info for better context
+    column_info = []
+    for col in df.columns:
+        sample = df[col].iloc[0] if not df.empty else None
+        dtype = str(df[col].dtype)
+        column_info.append(f"{col} ({dtype}): {sample}")
+    
     # Add error context to the system prompt if this is a retry
     system_content = (
-        'You are an intelligent AI assistant that is tasked with returning JSON objects, where the key '
-        'is "pandas_expression" and the value is the user query converted into a pandas expression. '
-        'Ensure the value in the JSON object is of raw string type. Do not include anything else in your response. '
-        'The pandas expression should be a valid Python string that can be evaluated with eval(). '
-        'DO NOT include any string prefixes like r" or f". '
-        'Here are examples of valid responses:\n'
+        'You are an AI that generates pandas expressions. Follow these rules strictly:\n'
+        '1. Return ONLY a complete pandas expression as a string\n'
+        '2. Do not include any JSON formatting, markdown, or other text\n'
+        '3. The expression must be a valid Python string that can be evaluated with eval()\n'
+        '4. For datetime operations, use pd.to_datetime() first\n'
+        '5. For numeric operations, ensure columns are converted to numeric using pd.to_numeric()\n'
+        '6. Always use double quotes for column names\n'
+        '7. Keep expressions simple and focused on one task\n\n'
+        'Example valid responses:\n'
+        'df[df["Year"] == 2020]\n'
+        'df[df["Total Deaths"] == df["Total Deaths"].max()]\n'
+        'df.assign(date=pd.to_datetime(df["date"]))[df["date"].dt.year == 2019]\n\n'
+        'Example invalid responses:\n'
         '{"pandas_expression": "df[df[\'Year\'] == 2020]"}\n'
-        '{"pandas_expression": "df[df[\'Total Deaths\'] == df[\'Total Deaths\'].max()]"}\n'
-        'Here are examples of INVALID responses:\n'
-        '{"pandas_expression": r"df[df[\'Year\'] == 2020]"}\n'
-        '{"pandas_expression": f"df[df[\'Year\'] == 2020]"}\n'
-        'Never assume that the data is of a certain type. If the user asks for the date, ensure that its of type datetime.'
-        'If the user asks for a number, ensure that its of type int or float.'
+        'df[df[\'Year\'] == 2020]\n'
+        'return df[df["Year"] == 2020]'
     )
     
     if previous_error:
-        system_content += f'\n\nPrevious attempt failed with error: {previous_error}\n'
-        system_content += 'Please fix the expression to address this error. For datetime operations, first convert the column to datetime using pd.to_datetime().'
+        system_content += f'\n\nPrevious attempt failed with error: {previous_error}'
     
     messages = [
         {
@@ -131,15 +124,38 @@ def get_pandas_expression(query, dataset_name, retry_count=0, max_retries=3, pre
         {
             'role': 'user',
             'content': (
-                f'Here is a dataset: {df.head().to_string()}. '
-                f'Here is the user query: {query}. '
-                'Write a pandas expression that properly evaluates the user query.'
+                f'Dataset: {dataset_name}\n'
+                f'Columns and sample values:\n' + '\n'.join(column_info) + '\n\n'
+                f'Query: {query}\n'
+                'Generate a pandas expression to answer this query.'
             )
         }
     ]
     
     response = make_openrouter_request(messages)
-    print(f'''\n\n Response for get_pandas_expression: \n\n\n{response}''')
+    
+    # Clean up the response to get just the pandas expression
+    response = response.strip()
+    
+    # Remove any markdown code blocks if present
+    response = re.sub(r'```.*?\n|\n```', '', response)
+    
+    # Remove any JSON formatting if present
+    response = re.sub(r'^{"pandas_expression":\s*"|"}$', '', response)
+    
+    # Remove any string prefixes
+    response = re.sub(r'^[rf]?"|"$', '', response)
+    
+    # Remove any Python keywords that might have been included
+    response = re.sub(r'^(return|def|print)\s+', '', response)
+    
+    # Basic validation of the expression
+    if not response.startswith('df'):
+        raise ValueError("Expression must start with 'df'")
+    
+    if ';' in response:
+        raise ValueError("Expression contains multiple statements")
+    
     return response
 
 def validate_pandas_expression(expr, dataset_name):
@@ -148,7 +164,17 @@ def validate_pandas_expression(expr, dataset_name):
         # Create a safe environment for eval with the appropriate dataframe
         df = disasters_df if dataset_name == "disasters" else tweets_df
         safe_dict = {'df': df, 'pd': pd}
-        eval(expr, safe_dict)
+        
+        # First try to evaluate the expression
+        result = eval(expr, safe_dict)
+        
+        # Additional validation
+        if not isinstance(result, pd.DataFrame):
+            return False, "Expression must return a DataFrame"
+            
+        if result.empty:
+            return False, "Expression returned an empty DataFrame"
+            
         return True, None
     except Exception as e:
         error_msg = str(e)
