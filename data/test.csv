@@ -1,6 +1,0 @@
-query,expected_output
-"Which disasters occurred in 2007 and affected more than 1000 people?","df[df['start_date'].str.startswith('2007') & df['No Affected'] > 1000]"
-"What is the average sentiment for each topic in the tweets?","df.groupby('topic')['sentiment'].mean()"
-"Which flood disasters had reconstruction costs exceeding 10000?","df[(df['Disaster Type'] == 'Flood') & (df['Reconstruction Costs (\'000 US$)'] > 10000)]"
-"How many tweets are there for each combination of stance and gender?","df.groupby(['stance', 'gender']).size()"
-"What are the disasters that had both deaths and affected people, ordered by number of deaths?","df[df['Total Deaths'].notna() & df['No Affected'].notna()].sort_values('Total Deaths', ascending=False)"

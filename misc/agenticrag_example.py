@@ -1,25 +1,71 @@
-import pandas as pd
+import sqlite3
 import requests
 from dotenv import load_dotenv
 import os
 import json
 import re
+import pandas as pd
 
 load_dotenv()
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 if not OPENROUTER_API_KEY:
     raise ValueError("OPENROUTER_API_KEY not found in environment variables")
 
-# Load datasets
-'''CHANGE FILE PATH TO MATCH YOUR LOCAL FILE PATH'''
+# Initialize in-memory SQLite database
+conn = sqlite3.connect(':memory:')
+cursor = conn.cursor()
+
+# Create tables with exact column names from CSV
+cursor.execute('''
+    CREATE TABLE disasters (
+        "Disaster Type" TEXT,
+        "Disaster Subtype" TEXT,
+        "Disaster Group" TEXT,
+        "Disaster Subgroup" TEXT,
+        "Event Name" TEXT,
+        "Origin" TEXT,
+        "Country" TEXT,
+        "Location" TEXT,
+        "Latitude" REAL,
+        "Longitude" REAL,
+        "start_date" TEXT,
+        "end_date" TEXT,
+        "Total Deaths" REAL,
+        "No Affected" REAL,
+        "Reconstruction Costs ('000 US$)" REAL,
+        "Total Damages ('000 US$)" REAL,
+        "CPI" REAL
+    )
+''')
+
+cursor.execute('''
+    CREATE TABLE tweets (
+        "created_at" TEXT,
+        "id" INTEGER,
+        "lng" REAL,
+        "lat" REAL,
+        "topic" TEXT,
+        "sentiment" REAL,
+        "stance" TEXT,
+        "gender" TEXT,
+        "temperature_avg" REAL,
+        "aggressiveness" TEXT
+    )
+''')
+
+# Load data from CSV files into SQLite
 disasters_df = pd.read_csv('../data/disasters_FINAL.csv')
 tweets_df = pd.read_csv('../data/finalized_tweets.csv')
 
+# Insert data into SQLite tables
+disasters_df.to_sql('disasters', conn, if_exists='append', index=False)
+tweets_df.to_sql('tweets', conn, if_exists='append', index=False)
+
 # Print sample of each dataset
 print("Disasters dataset sample:")
-print(disasters_df.head())
+print(pd.read_sql_query("SELECT * FROM disasters LIMIT 5", conn))
 print("\nTweets dataset sample:")
-print(tweets_df.head())
+print(pd.read_sql_query("SELECT * FROM tweets LIMIT 5", conn))
 
 def make_openrouter_request(messages):
     """Make a request to OpenRouter API"""
@@ -40,7 +86,6 @@ def make_openrouter_request(messages):
     )
     
     response_json = response.json()
-    print(f'Response: {response_json}')
     
     if response.status_code != 200:
         error_msg = response_json.get('error', {}).get('message', 'Unknown error')
@@ -82,142 +127,83 @@ def determine_dataset(query):
         return response
     return None
 
-def get_pandas_expression(query, dataset_name, retry_count=0, max_retries=3, previous_error=None):
-    # Select the appropriate dataframe
-    df = disasters_df if dataset_name == "disasters" else tweets_df
-    
-    # Get column info for better context
-    column_info = []
-    for col in df.columns:
-        sample = df[col].iloc[0] if not df.empty else None
-        dtype = str(df[col].dtype)
-        column_info.append(f"{col} ({dtype}): {sample}")
-    
-    # Add error context to the system prompt if this is a retry
-    system_content = (
-        'You are an AI that generates pandas expressions. Follow these rules strictly:\n'
-        '1. Return ONLY a complete pandas expression as a string\n'
-        '2. Do not include any JSON formatting, markdown, or other text\n'
-        '3. The expression must be a valid Python string that can be evaluated with eval()\n'
-        '4. For datetime operations, use pd.to_datetime() first\n'
-        '5. For numeric operations, ensure columns are converted to numeric using pd.to_numeric()\n'
-        '6. Always use double quotes for column names\n'
-        '7. Keep expressions simple and focused on one task\n\n'
-        'Example valid responses:\n'
-        'df[df["Year"] == 2020]\n'
-        'df[df["Total Deaths"] == df["Total Deaths"].max()]\n'
-        'df.assign(date=pd.to_datetime(df["date"]))[df["date"].dt.year == 2019]\n\n'
-        'Example invalid responses:\n'
-        '{"pandas_expression": "df[df[\'Year\'] == 2020]"}\n'
-        'df[df[\'Year\'] == 2020]\n'
-        'return df[df["Year"] == 2020]'
-    )
-    
-    if previous_error:
-        system_content += f'\n\nPrevious attempt failed with error: {previous_error}'
-    
+def get_sql_expression(query, dataset_name, retry_count=0, max_retries=3, previous_error=None):
+    schema_info = {
+        'disasters': '''Available columns in the disasters table:
+- "Disaster Type" (TEXT)
+- "Disaster Subtype" (TEXT)
+- "Disaster Group" (TEXT)
+- "Disaster Subgroup" (TEXT)
+- "Event Name" (TEXT)
+- "Origin" (TEXT)
+- "Country" (TEXT)
+- "Location" (TEXT)
+- "Latitude" (REAL)
+- "Longitude" (REAL)
+- "start_date" (TEXT)
+- "end_date" (TEXT)
+- "Total Deaths" (REAL)
+- "No Affected" (REAL)
+- "Reconstruction Costs ('000 US$)" (REAL)
+- "Total Damages ('000 US$)" (REAL)
+- "CPI" (REAL)''',
+        'tweets': '''Available columns in the tweets table:
+- "created_at" (TEXT) - Format: YYYY-MM-DD HH:MM:SS+00:00
+- "id" (INTEGER)
+- "lng" (REAL)
+- "lat" (REAL)
+- "topic" (TEXT)
+- "sentiment" (REAL)
+- "stance" (TEXT)
+- "gender" (TEXT) - Values: "male", "female"
+- "temperature_avg" (REAL)
+- "aggressiveness" (TEXT) - Values: "aggressive", "not aggressive"'''
+    }
+
     messages = [
         {
             'role': 'system',
-            'content': system_content
+            'content': f'''You must return ONLY a JSON object with a single key "sql_query" containing the SQL query. Do not include any other text, explanations, or markdown.
+
+{schema_info[dataset_name]}
+
+For text columns with specific values (like "aggressiveness"), use CASE statements to convert them to numbers if needed.
+Example for tweets: {{"sql_query": "SELECT gender, AVG(CASE WHEN aggressiveness = 'aggressive' THEN 1 ELSE 0 END) as avg_aggressiveness FROM tweets GROUP BY gender"}}'''
         },
         {
             'role': 'user',
-            'content': (
-                f'Dataset: {dataset_name}\n'
-                f'Columns and sample values:\n' + '\n'.join(column_info) + '\n\n'
-                f'Query: {query}\n'
-                'Generate a pandas expression to answer this query.'
-            )
+            'content': query
         }
     ]
     
-    response = make_openrouter_request(messages)
-    
-    # Clean up the response to get just the pandas expression
-    response = response.strip()
-    
-    # Remove any markdown code blocks if present
-    response = re.sub(r'```.*?\n|\n```', '', response)
-    
-    # Remove any JSON formatting if present
-    response = re.sub(r'^{"pandas_expression":\s*"|"}$', '', response)
-    
-    # Remove any string prefixes
-    response = re.sub(r'^[rf]?"|"$', '', response)
-    
-    # Remove any Python keywords that might have been included
-    response = re.sub(r'^(return|def|print)\s+', '', response)
-    
-    # Basic validation of the expression
-    if not response.startswith('df'):
-        raise ValueError("Expression must start with 'df'")
-    
-    if ';' in response:
-        raise ValueError("Expression contains multiple statements")
-    
-    return response
+    content = make_openrouter_request(messages)
+    print("Raw API response:", repr(content))  # Debug print
+    return json.loads(content)['sql_query']
 
-def validate_pandas_expression(expr, dataset_name):
-    """Test if a pandas expression is valid by trying to evaluate it."""
+def answer_with_table(user_query, sql_expression, dataset_name):
     try:
-        # Create a safe environment for eval with the appropriate dataframe
-        df = disasters_df if dataset_name == "disasters" else tweets_df
-        safe_dict = {'df': df, 'pd': pd}
+        # Execute the SQL query and get the actual results
+        result_table = pd.read_sql_query(sql_expression, conn)
         
-        # First try to evaluate the expression
-        result = eval(expr, safe_dict)
-        
-        # Additional validation
-        if not isinstance(result, pd.DataFrame):
-            return False, "Expression must return a DataFrame"
-            
-        if result.empty:
-            return False, "Expression returned an empty DataFrame"
-            
-        return True, None
+        # If we got results, ask LLM to explain them
+        if not result_table.empty:
+            messages = [
+                {
+                    'role': 'system',
+                    'content': 'Answer the question based on the data shown.'
+                },
+                {
+                    'role': 'user',
+                    'content': (
+                        f"Question: {user_query}\n"
+                        f"Data:\n{result_table.to_string(index=False)}"
+                    )
+                }
+            ]
+            return make_openrouter_request(messages)
+        return "No data found"
     except Exception as e:
-        error_msg = str(e)
-        print(f"Expression validation failed: {error_msg}")
-        return False, error_msg
-
-def answer_with_table(user_query, pandas_expression, dataset_name):
-    # Select the appropriate dataframe
-    df = disasters_df if dataset_name == "disasters" else tweets_df
-    
-    # Evaluate the pandas expression safely
-    print(f'Calling eval with pandas expression: {pandas_expression}')
-    try:
-        # The expression should be something like: df[df['Flavor'] == 'Vanilla']
-        result_table = eval(pandas_expression, {'df': df, 'pd': pd})
-    except Exception as e:
-        return f"Error evaluating pandas expression: {e}"
-
-    # Convert the result to a string (limit rows for brevity)
-    # table_str = result_table.head(10).to_string()
-    # print(f'Table: {table_str}')
-
-    # Now ask the LLM to answer the user's question using the table
-    messages = [
-        {
-            'role': 'system',
-            'content': (
-                'You are a data analyst. The table provided to you is the direct result of a pandas query that '
-                'answers the user\'s question. Your task is to interpret this filtered data and explain briefly what it '
-                'tells us about the user\'s question. If the table is empty, explain what that means in the context '
-                'of the question. Provide only the concise answer to the question, no other text.'
-            )
-        },
-        {
-            'role': 'user',
-            'content': (
-                f"User's question: {user_query}\n"
-                f"Here is the filtered data that answers this question:\n{result_table}"
-            )
-        }
-    ]
-    
-    return make_openrouter_request(messages)
+        return f"QUERY_INCORRECT: {str(e)}"
 
 if __name__ == '__main__':
     user_input = input('What is your question? ')
@@ -235,33 +221,31 @@ if __name__ == '__main__':
     previous_error = None
     
     while retry_count < max_retries:
-        pandas_expr_json = get_pandas_expression(user_input, dataset_name, retry_count, max_retries, previous_error)
-        
-        # Strip markdown code block syntax using regex
-        pandas_expr_json = re.sub(r'```json\n|\n```', '', pandas_expr_json)
+        sql_expr = get_sql_expression(user_input, dataset_name, retry_count, max_retries, previous_error)
+        print(f"\nGenerated SQL query:\n{sql_expr}\n")
         
         try:
-            pandas_expr = json.loads(pandas_expr_json)["pandas_expression"]
-            # Remove any string prefixes if they exist
-            pandas_expr = re.sub(r'^[rf]?"|"$', '', pandas_expr)
+            # Execute query and get results
+            answer = answer_with_table(user_input, sql_expr, dataset_name)
             
-            # Validate the expression
-            is_valid, error = validate_pandas_expression(pandas_expr, dataset_name)
-            if is_valid:
-                print(f"Generated pandas expression: {pandas_expr}")
-                answer = answer_with_table(user_input, pandas_expr, dataset_name)
-                print(f"""--------------------\n\nLLM's answer: {answer}\n\n --------------------""")
-                break
-            else:
-                print(f"Invalid pandas expression, retrying... (attempt {retry_count + 1}/{max_retries})")
-                previous_error = error
+            # Check if the answer indicates a problem with the query
+            if answer.startswith("QUERY_INCORRECT:"):
+                print(f"Query needs revision (attempt {retry_count + 1}/{max_retries}):")
+                print(f"Reason: {answer[16:]}\n")
+                previous_error = answer
                 retry_count += 1
+            else:
+                print("Query executed successfully!")
+                print(f"""--------------------\n\n{answer}\n\n--------------------""")
+                break
                 
-        except (json.JSONDecodeError, KeyError) as e:
-            print(f"Error parsing pandas expression: {e}")
-            print(f"Raw expression: {pandas_expr_json}")
+        except Exception as e:
+            print(f"Error executing query (attempt {retry_count + 1}/{max_retries}):")
+            print(f"Error: {e}")
+            print(f"Query: {sql_expr}\n")
             previous_error = str(e)
             retry_count += 1
             
     if retry_count >= max_retries:
-        print("Failed to generate a valid pandas expression after maximum retries.")
+        print("\nFailed to generate a valid query after maximum retries.")
+        print("Please try rephrasing your question.")
