@@ -1,3 +1,6 @@
+'''
+Old RAG server implementation - Naive RAG
+'''
 import os
 import pandas as pd
 from dotenv import load_dotenv

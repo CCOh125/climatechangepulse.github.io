@@ -1,5 +1,5 @@
 """
-chatbot_server.py communicates with climatechangepulse.org, giving responses to user queries.
+chatbot_server.py (old): communicates with climatechangepulse.org, giving responses to user queries.
 """
 
 import os

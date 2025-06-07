@@ -160,15 +160,31 @@ def get_sql_expression(query, dataset_name, retry_count=0, max_retries=3, previo
 - "aggressiveness" (TEXT) - Values: "aggressive", "not aggressive"'''
     }
 
-    messages = [
-        {
-            'role': 'system',
-            'content': f'''You must return ONLY a JSON object with a single key "sql_query" containing the SQL query. Do not include any other text, explanations, or markdown.
+    # Build system message with emphasis on proper quoting and error handling
+    system_content = f'''You must return ONLY a JSON object with a single key "sql_query" containing the SQL query. Do not include any other text, explanations, or markdown.
 
 {schema_info[dataset_name]}
 
-For text columns with specific values (like "aggressiveness"), use CASE statements to convert them to numbers if needed.
-Example for tweets: {{"sql_query": "SELECT gender, AVG(CASE WHEN aggressiveness = 'aggressive' THEN 1 ELSE 0 END) as avg_aggressiveness FROM tweets GROUP BY gender"}}'''
+CRITICAL RULES:
+1. ALL column names with spaces or special characters MUST be enclosed in double quotes
+2. Column names shown above are the EXACT names - use them exactly as shown including quotes
+3. For text columns with specific values (like "aggressiveness"), use CASE statements to convert them to numbers if needed
+
+Example correct queries:
+- SELECT "Event Name", "Total Deaths" FROM disasters ORDER BY "Total Deaths" DESC LIMIT 1
+- SELECT "gender", AVG(CASE WHEN "aggressiveness" = 'aggressive' THEN 1 ELSE 0 END) as avg_aggressiveness FROM tweets GROUP BY "gender"'''
+
+    # Add previous error information if this is a retry
+    if previous_error and retry_count > 0:
+        system_content += f'''
+
+PREVIOUS ERROR (attempt {retry_count}): {previous_error}
+Please fix the SQL query based on this error. Pay special attention to column name quoting and syntax.'''
+
+    messages = [
+        {
+            'role': 'system',
+            'content': system_content
         },
         {
             'role': 'user',
@@ -190,7 +206,12 @@ def answer_with_table(user_query, sql_expression, dataset_name):
             messages = [
                 {
                     'role': 'system',
-                    'content': 'Answer the question based on the data shown.'
+                    'content': '''Answer the question based on the data shown. 
+                    
+IMPORTANT: Do not mention limitations about "only one data point" or similar phrases when the query is specifically designed to return filtered results (like finding the top/highest/most/least of something). The data shown is the intended result of the query, not a limitation of the dataset.
+
+Focus on directly answering the question with the information provided.
+If there is no data, you can assume the query failed to return any results, so you should say there was no data found.'''
                 },
                 {
                     'role': 'user',

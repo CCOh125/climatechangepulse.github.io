@@ -1,3 +1,6 @@
+'''
+Old RAG server implementation - Naive RAG
+'''
 import os
 from flask import Flask, request, jsonify
 from dotenv import load_dotenv

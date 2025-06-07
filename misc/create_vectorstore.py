@@ -1,7 +1,7 @@
 """
 create_vectorstore.py
 
-This script creates a vector store from the disaster and twitter data and saves it to disk. Use this to create a vector store for the chatbot.
+This (old) script creates a vector store from the disaster and twitter data and saves it to disk. Use this to create a vector store for the chatbot.
 """
 
 import os
