@@ -27,71 +27,85 @@ CORS(app, resources={r"/*": {"origins": ["https://climatechangepulse.org"]}})
 sessions = {}  # Store conversation history
 conn = None  # SQLite connection
 
+# Initialize database when module is loaded
+def init_app():
+    """Initialize the database when the app starts"""
+    global conn
+    if conn is None:
+        initialize_database()
+
 def initialize_database():
     """Initialize in-memory SQLite database with CSV data"""
     global conn
-    print("Initializing in-memory SQLite database...")
     
-    # Initialize in-memory SQLite database
-    conn = sqlite3.connect(':memory:', check_same_thread=False)
-    cursor = conn.cursor()
-
-    # Create tables with exact column names from CSV
-    cursor.execute('''
-        CREATE TABLE disasters (
-            "Disaster Type" TEXT,
-            "Disaster Subtype" TEXT,
-            "Disaster Group" TEXT,
-            "Disaster Subgroup" TEXT,
-            "Event Name" TEXT,
-            "Origin" TEXT,
-            "Country" TEXT,
-            "Location" TEXT,
-            "Latitude" REAL,
-            "Longitude" REAL,
-            "start_date" TEXT,
-            "end_date" TEXT,
-            "Total Deaths" REAL,
-            "No Affected" REAL,
-            "Reconstruction Costs ('000 US$)" REAL,
-            "Total Damages ('000 US$)" REAL,
-            "CPI" REAL
-        )
-    ''')
-
-    cursor.execute('''
-        CREATE TABLE tweets (
-            "created_at" TEXT,
-            "id" INTEGER,
-            "lng" REAL,
-            "lat" REAL,
-            "topic" TEXT,
-            "sentiment" REAL,
-            "stance" TEXT,
-            "gender" TEXT,
-            "temperature_avg" REAL,
-            "aggressiveness" TEXT
-        )
-    ''')
-
     try:
-        # Load data from CSV files into SQLite
-        disasters_df = pd.read_csv('data/disasters_FINAL.csv')
-        tweets_df = pd.read_csv('data/finalized_tweets.csv')
-
-        # Insert data into SQLite tables
-        disasters_df.to_sql('disasters', conn, if_exists='append', index=False)
-        tweets_df.to_sql('tweets', conn, if_exists='append', index=False)
-
-        print(f"Loaded {len(disasters_df)} disaster records and {len(tweets_df)} tweet records into database")
+        print("Initializing in-memory SQLite database...")
         
-        # Print sample of each dataset
-        print("Database initialized successfully!")
+        # Initialize in-memory SQLite database
+        conn = sqlite3.connect(':memory:', check_same_thread=False)
+        cursor = conn.cursor()
+
+        # Create tables with exact column names from CSV
+        cursor.execute('''
+            CREATE TABLE disasters (
+                "Disaster Type" TEXT,
+                "Disaster Subtype" TEXT,
+                "Disaster Group" TEXT,
+                "Disaster Subgroup" TEXT,
+                "Event Name" TEXT,
+                "Origin" TEXT,
+                "Country" TEXT,
+                "Location" TEXT,
+                "Latitude" REAL,
+                "Longitude" REAL,
+                "start_date" TEXT,
+                "end_date" TEXT,
+                "Total Deaths" REAL,
+                "No Affected" REAL,
+                "Reconstruction Costs ('000 US$)" REAL,
+                "Total Damages ('000 US$)" REAL,
+                "CPI" REAL
+            )
+        ''')
+
+        cursor.execute('''
+            CREATE TABLE tweets (
+                "created_at" TEXT,
+                "id" INTEGER,
+                "lng" REAL,
+                "lat" REAL,
+                "topic" TEXT,
+                "sentiment" REAL,
+                "stance" TEXT,
+                "gender" TEXT,
+                "temperature_avg" REAL,
+                "aggressiveness" TEXT
+            )
+        ''')
+
+        try:
+            # Load data from CSV files into SQLite
+            disasters_df = pd.read_csv('data/disasters_FINAL.csv')
+            tweets_df = pd.read_csv('data/finalized_tweets.csv')
+
+            # Insert data into SQLite tables
+            disasters_df.to_sql('disasters', conn, if_exists='append', index=False)
+            tweets_df.to_sql('tweets', conn, if_exists='append', index=False)
+
+            print(f"Loaded {len(disasters_df)} disaster records and {len(tweets_df)} tweet records into database")
+            print("Database initialized successfully!")
+            
+        except Exception as e:
+            print(f"Error loading CSV data: {str(e)}")
+            print("Continuing with empty database tables...")
+            
+        # Commit the changes
+        conn.commit()
         
     except Exception as e:
-        print(f"Error loading CSV data: {str(e)}")
-        # Create empty tables if CSV loading fails
-        print("Continuing with empty database tables...")
+        print(f"Critical error initializing database: {str(e)}")
+        conn = None
+        raise
 
 def make_openrouter_request(messages):
     """Make a request to OpenRouter API"""
@@ -275,6 +289,14 @@ def serve_index():
 @app.route('/chat', methods=['POST'])
 def chat():
     try:
+        # Ensure database is initialized
+        global conn
+        if conn is None:
+            print("Database not initialized, initializing now...")
+            initialize_database()
+            if conn is None:
+                return jsonify({'error': 'Database initialization failed'}), 500
+        
         # Cleanup old sessions
         cleanup_old_sessions()
         
@@ -372,7 +394,8 @@ def chat():
         traceback.print_exc()
         return jsonify({'error': str(e)}), 500
 
+# Initialize database when module loads
+init_app()
+
 if __name__ == "__main__":
-    # Initialize database when server starts
-    initialize_database()
     app.run(host='0.0.0.0', port=int(os.environ.get('PORT', 5000))) 
